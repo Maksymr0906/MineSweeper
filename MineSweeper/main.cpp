@@ -1,87 +1,124 @@
 #include <SFML/Graphics.hpp>
+#include <array>
+#include <random>
+#include <string>
 
 using namespace sf;
 
+const constexpr int EMPTY_OPEN_CELL_NUMBER = 0;
+const constexpr int EMPTY_CLOSED_CELL_NUMBER = 10;
+const constexpr int FLAG_CELL_NUMBER = 11;
 const constexpr int MINE_NUMBER = 9;
 const constexpr int CELL_WIDTH = 32;
+const constexpr int WINDOW_HEIGHT = 384;
+const constexpr int WINDOW_WIDTH = 384;
+const constexpr int LOSE_GAME = -1;
+const constexpr int WIN_GAME = 1;
+
+std::array<std::array<int, 10>, 10> gridLogic{};
+std::array<std::array<int, 10>, 10> gridView{};
+
+void eventHandler(RenderWindow &window, bool gameOver);
+void fillArrayWithSprites(std::array<Sprite, 12> &array, const Texture &texture);
+int isGameOver(int seconds);
 
 int main() {
-	srand(time(0));
+	ContextSettings settings;
+	settings.antialiasingLevel = 1;
+	RenderWindow window(VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Minesweeper", Style::Default, settings);
+	
+	Texture texture;
+	texture.loadFromFile("MineSweeper.png");
+	
+	std::array<Sprite, 12> sprites;
+	fillArrayWithSprites(sprites, texture);
 
-	RenderWindow window(VideoMode(400, 400), "Minesweeper");
-
-
-	int gridLogic[11][11];
-	int gridView[11][11];
-
-	Texture t;
-	t.loadFromFile("MineSweeper.png");
-	Sprite s(t);
-
-	for(int i = 1; i <= 10; i++) {
-		for(int j = 1; j <= 10; j++) {
-			gridView[i][j] = 10;
-			if(rand() % 5 == 0)
-				gridLogic[i][j] = MINE_NUMBER;
-			else
-				gridLogic[i][j] = 0;
+	for(size_t i = 0; i < gridView.size(); i++) {
+		for(size_t j = 0; j < gridView.at(i).size(); j++) {
+			gridView.at(i).at(j) = EMPTY_CLOSED_CELL_NUMBER;
 		}
 	}
-		
 
-	for(int i = 1; i <= 10; i++) {
-		for(int j = 1; j <= 10; j++) {
-			int n = 0;
-			if(gridLogic[i][j] == MINE_NUMBER) continue;
-			if(gridLogic[i + 1][j] == MINE_NUMBER) n++;
-			if(gridLogic[i][j + 1] == MINE_NUMBER) n++;
-			if(gridLogic[i - 1][j] == MINE_NUMBER) n++;
-			if(gridLogic[i][j - 1] == MINE_NUMBER) n++;
-			if(gridLogic[i + 1][j + 1] == MINE_NUMBER) n++;
-			if(gridLogic[i - 1][j - 1] == MINE_NUMBER) n++;
-			if(gridLogic[i - 1][j + 1] == MINE_NUMBER) n++;
-			if(gridLogic[i + 1][j - 1] == MINE_NUMBER) n++;
-			gridLogic[i][j] = n;
+	for(size_t i = 0; i < gridLogic.size(); i++) {
+		for(size_t j = 0; j < gridLogic.at(i).size(); j++) {
+			if(std::mt19937(std::random_device{}())() % 5 == 0) {
+				gridLogic.at(i).at(j) = MINE_NUMBER;
+			}
+			else {
+				gridLogic.at(i).at(j) = EMPTY_OPEN_CELL_NUMBER;
+			}
 		}
 	}
+
+	for(int i = 0; i < gridLogic.size(); i++) {
+		for(int j = 0; j < gridLogic.at(i).size(); j++) {
+			if(gridLogic.at(i).at(j) == MINE_NUMBER)
+				continue;
+
+			for(int x = i - 1; x <= i + 1; x++)
+				for(int y = j - 1; y <= j + 1; y++)
+					if(x >= 0 && x < gridLogic.size() && y >= 0 && y < gridLogic.at(i).size() && gridLogic.at(x).at(y) == MINE_NUMBER)
+						gridLogic.at(i).at(j)++;
+		}
+	}
+
+	Clock clock;
+	clock.restart();
+	int seconds = 0;
 
 	while(window.isOpen()) {
-		Vector2i pos = Mouse::getPosition(window);
-		int x = pos.x / CELL_WIDTH;
-		int y = pos.y / CELL_WIDTH;
+		int gameOver = isGameOver(600 - seconds);
+		eventHandler(window, gameOver == LOSE_GAME || gameOver == WIN_GAME);
 
-		Event e;
-		while(window.pollEvent(e)) {
-			if(e.type == Event::Closed)
-				window.close();
+		window.clear();
 
-			if (e.type == Event::MouseButtonPressed) {
-				if (FloatRect(0, 0, window.getSize().x, window.getSize().y).contains(pos.x, pos.y)) {
-					if (e.mouseButton.button == Mouse::Left)
-						gridView[x][y] = gridLogic[x][y];
-					else if (e.mouseButton.button == Mouse::Right)
-						gridView[x][y] = 11;
-				}
+		for(int x = 0; x < gridView.size(); x++) {
+			for(int y = 0; y < gridView.at(x).size(); y++) {
+				sprites.at(gridView.at(x).at(y)).setPosition(CELL_WIDTH + x * CELL_WIDTH, CELL_WIDTH + y * CELL_WIDTH);
+				window.draw(sprites.at(gridView.at(x).at(y)));
 			}
-
-			window.clear(Color::White);
-
-			for(int i = 1; i <= 10; i++)
-				for(int j = 1; j <= 10; j++) {
-					if(gridView[x][y] == MINE_NUMBER)
-						gridView[i][j] = gridLogic[i][j];
-
-					s.setTextureRect(IntRect(gridView[i][j] * CELL_WIDTH, 0, CELL_WIDTH, CELL_WIDTH));
-
-					s.setPosition(i * CELL_WIDTH, j * CELL_WIDTH);
-
-					window.draw(s);
-				}
-			window.display();
 		}
-
-		
+			
+		window.display();
 	}
 
-	return 0;
+}
+
+void fillArrayWithSprites(std::array<Sprite, 12> &array, const Texture &texture) {
+	for(size_t i = 0; i < array.size(); i++) {
+		array.at(i).setTexture(texture);
+		array.at(i).setTextureRect(IntRect(i * CELL_WIDTH, 0, CELL_WIDTH, CELL_WIDTH));
+	}
+}
+
+void eventHandler(RenderWindow &window, bool gameOver) {
+	Event event;
+	while(window.pollEvent(event)) {
+		if(event.type == Event::Closed) {
+			window.close();
+		}
+
+		if(event.type == Event::MouseButtonPressed) {
+			Vector2i pos = Mouse::getPosition(window);
+			int x = pos.x / CELL_WIDTH - 1;
+			int y = pos.y / CELL_WIDTH - 1;
+			if(x >= 0 && x < gridView.size() && y >= 0 && y < gridView.at(0).size()) {
+				if(event.key.code == Mouse::Left) {
+					gridView.at(x).at(y) = gridLogic.at(x).at(y);
+				}
+				if(event.key.code == Mouse::Right) {
+					if(gridView.at(x).at(y) == EMPTY_CLOSED_CELL_NUMBER) {
+						gridView.at(x).at(y) = FLAG_CELL_NUMBER;
+					}
+					else if(gridView.at(x).at(y) == FLAG_CELL_NUMBER) {
+						gridView.at(x).at(y) = EMPTY_CLOSED_CELL_NUMBER;
+					}
+				}
+			}
+		}
+	}
+}
+
+int isGameOver(int seconds) {
+	return LOSE_GAME;
 }
